@@ -38,6 +38,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadMetroStations();
 
+    // Load Metro Lines (Tracks)
+    let metroLinesData = [];
+    async function loadMetroLines() {
+        try {
+            const response = await fetch('/api/metro-lines');
+            const data = await response.json();
+            if (data.lines) {
+                metroLinesData = data.lines;
+                console.log("Loaded metro lines:", metroLinesData.length);
+            }
+        } catch (e) {
+            console.warn("Failed to load metro lines", e);
+        }
+    }
+    loadMetroLines();
+
     // Load Bus Stops
     async function loadBusStops() {
         try {
@@ -169,6 +185,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 url += `&d_lat=${selectedDestCoords[0]}&d_lon=${selectedDestCoords[1]}`;
             }
 
+            // Add Preferences
+            try {
+                const prefs = JSON.parse(localStorage.getItem('userPreferences') || '{}');
+                if (prefs.priority) url += `&preference=${encodeURIComponent(prefs.priority)}`;
+                if (prefs.mode) url += `&mode_preference=${encodeURIComponent(prefs.mode)}`;
+                if (prefs.maxWalk) url += `&max_walk=${encodeURIComponent(prefs.maxWalk)}`;
+            } catch (e) { console.warn("Error reading prefs", e); }
+
+
             console.log("Fetching:", url);
             const response = await fetch(url);
             if (!response.ok) throw new Error("Network response was not ok");
@@ -198,11 +223,105 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Keep Enter key listeners
     destinationInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') window.handleSearch();
+        if (e.key === 'Enter') {
+            closeAllLists();
+            window.handleSearch();
+        }
     });
     startInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') window.handleSearch();
+        if (e.key === 'Enter') {
+            closeAllLists();
+            window.handleSearch();
+        }
     });
+
+    // --- Autocomplete Logic ---
+
+    function debounce(func, wait) {
+        let timeout;
+        return function (...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    }
+
+    function closeAllLists(elmnt) {
+        const items = document.getElementsByClassName("autocomplete-items");
+        for (let i = 0; i < items.length; i++) {
+            if (elmnt != items[i] && elmnt != startInput && elmnt != destinationInput) {
+                items[i].parentNode.removeChild(items[i]);
+            }
+        }
+    }
+
+    // Close autocomplete when clicking elsewhere
+    document.addEventListener("click", function (e) {
+        closeAllLists(e.target);
+    });
+
+    async function handleInput(inp, type) {
+        const val = inp.value;
+        closeAllLists();
+        if (!val || val.length < 2) return;
+
+        // Create container for items
+        const listDiv = document.createElement("div");
+        listDiv.setAttribute("id", inp.id + "autocomplete-list");
+        listDiv.setAttribute("class", "autocomplete-items glass-panel");
+        inp.parentNode.appendChild(listDiv);
+
+        try {
+            const response = await fetch(`/api/autocomplete?query=${encodeURIComponent(val)}`);
+            const data = await response.json();
+
+            data.results.forEach(item => {
+                const itemDiv = document.createElement("div");
+                itemDiv.className = "autocomplete-item";
+
+                let icon = '📍';
+                if (item.type === 'Metro Station') icon = '🚇';
+                if (item.type === 'Bus Stop') icon = '🚌';
+                if (item.type === 'Location') icon = '🏙️';
+
+                itemDiv.innerHTML = `
+                    <div class="item-icon">${icon}</div>
+                    <div class="item-info">
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-type">${item.type}</div>
+                    </div>
+                `;
+
+                itemDiv.addEventListener("click", function () {
+                    inp.value = item.name;
+
+                    if (type === 'start') {
+                        selectedStartCoords = [item.lat, item.lon];
+                        console.log("Start Autoselected:", item);
+                    } else {
+                        selectedDestCoords = [item.lat, item.lon];
+                        console.log("Dest Autoselected:", item);
+                    }
+
+                    closeAllLists();
+                });
+
+                listDiv.appendChild(itemDiv);
+            });
+
+        } catch (e) {
+            console.warn("Autocomplete fetch error", e);
+        }
+    }
+
+    startInput.addEventListener("input", debounce(function () {
+        selectedStartCoords = null; // Clear prev selection
+        handleInput(this, 'start');
+    }, 400));
+
+    destinationInput.addEventListener("input", debounce(function () {
+        selectedDestCoords = null; // Clear prev selection
+        handleInput(this, 'dest');
+    }, 400));
 
     // Render Results
     function renderResults(routes, distance) {
@@ -236,8 +355,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (route.mode.includes('Metro')) icon = '🚇';
             if (route.mode.includes('Bus')) icon = '🚌';
             if (route.mode.includes('Walk')) icon = '🚶';
-            if (route.mode.includes('Auto')) icon = '🛺';
+            if (route.mode.includes('Auto') || route.mode.includes('Namma Yatri')) icon = '🛺';
             if (route.mode.includes('Moto')) icon = '🛵';
+            if (route.mode.includes('Cab')) icon = '🚕';
 
             let segmentsHtml = '';
             if (route.segments) {
@@ -247,6 +367,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (seg.mode === 'walk') segIcon = '🚶';
                     if (seg.mode === 'metro') segIcon = '🚇';
                     if (seg.mode === 'bus') segIcon = '🚌';
+                    if (seg.mode === 'auto') segIcon = '🛺';
+                    if (seg.mode === 'cab') segIcon = '🚕';
 
                     segmentsHtml += `
                         <div class="segment-step">
@@ -259,6 +381,49 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                 });
                 segmentsHtml += `</div>`;
+            }
+
+            // Sub-Options Logic (Cab Direct)
+            let extraHtml = '';
+            if (route.sub_options) {
+                extraHtml += `<div class="sub-options-container" style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">`;
+                route.sub_options.forEach(opt => {
+                    extraHtml += `
+                        <div style="display:flex; justify-content:space-between; font-size:0.9rem; margin-bottom:4px;">
+                            <span>${opt.name}</span>
+                            <span style="font-weight:600;">₹${opt.cost}</span>
+                        </div>
+                    `;
+                });
+                extraHtml += `</div>`;
+            }
+            // Sub-Costs Logic (Metro Breakdown)
+            else if (route.sub_costs) {
+                const sc = route.sub_costs;
+                extraHtml += `<div class="sub-options-container" style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1);">`;
+
+                if (sc.leg1_auto > 0) {
+                    extraHtml += `
+                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:2px; color:var(--text-secondary);">
+                            <span>Auto to Station</span>
+                            <span>₹${sc.leg1_auto}</span>
+                        </div>`;
+                }
+                if (sc.metro > 0) {
+                    extraHtml += `
+                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:2px; color:var(--text-secondary);">
+                            <span>Metro Fare</span>
+                            <span>₹${sc.metro}</span>
+                        </div>`;
+                }
+                if (sc.leg3_auto > 0) {
+                    extraHtml += `
+                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:2px; color:var(--text-secondary);">
+                            <span>Auto from Station</span>
+                            <span>₹${sc.leg3_auto}</span>
+                        </div>`;
+                }
+                extraHtml += `</div>`;
             }
 
             card.innerHTML = `
@@ -274,8 +439,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span>⏱ ${route.duration} min</span>
                         <span class="safety-rating">🛡 ${route.safety}</span>
                     </div>
-                    <div class="ai-score">AI Score: ${route.ai_score}/10</div>
                 </div>
+                ${extraHtml}
                 ${segmentsHtml}
             `;
 
@@ -296,11 +461,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Draw Route
     async function drawRoute(route) {
+        // Clear previous layer immediately to prevent overlap during async fetch
         if (currentRouteLayer) {
             map.removeLayer(currentRouteLayer);
+            currentRouteLayer = null;
         }
 
         const layers = [];
+        // Create a temporary group for this specific render to avoid race conditions
+        const newLayerGroup = L.featureGroup();
 
         if (route.segments) {
             for (const segment of route.segments) {
@@ -315,29 +484,87 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 let latlngs = [segment.from, segment.to];
 
+                // --- PATH FINDING LOGIC ---
+
+                // 1. OSRM for Road/Walk
                 if (['walk', 'auto', 'cab', 'moto', 'bike', 'bus'].includes(segment.mode)) {
-                    try {
-                        const start = `${segment.from[1]},${segment.from[0]}`;
-                        const end = `${segment.to[1]},${segment.to[0]}`;
-                        const profile = segment.mode === 'walk' ? 'walking' : 'driving';
+                    // Check if we already have cached geometry for this segment
+                    if (segment.cachedGeometry) {
+                        latlngs = segment.cachedGeometry;
+                    }
+                    else {
+                        try {
+                            const start = `${segment.from[1]},${segment.from[0]}`;
+                            const end = `${segment.to[1]},${segment.to[0]}`;
+                            const profile = segment.mode === 'walk' ? 'walking' : 'driving';
 
-                        const response = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${start};${end}?overview=full&geometries=geojson`);
-                        const data = await response.json();
+                            // console.log(`Fetching OSRM: /api/proxy/osrm?start=${start}&end=${end}&mode=${profile}`);
+                            const response = await fetch(`/api/proxy/osrm?start=${start}&end=${end}&mode=${profile}`);
+                            const data = await response.json();
 
-                        if (data.routes && data.routes[0]) {
-                            latlngs = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                            if (data.routes && data.routes[0]) {
+                                latlngs = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                                segment.cachedGeometry = latlngs; // Cache it!
+                            }
+                        } catch (e) {
+                            console.warn('OSRM fetch failed', e);
                         }
-                    } catch (e) {
-                        console.warn('OSRM fetch failed', e);
                     }
                 }
 
-                layers.push(L.polyline(latlngs, { color, weight: 5, opacity: 0.8, dashArray }));
-                layers.push(L.circleMarker(segment.to, { radius: 4, color, fillColor: '#fff', fillOpacity: 1 }));
+                // 2. Metro Line Slicing from GeoJSON
+                else if (segment.mode === 'metro' && metroLinesData.length > 0) {
+                    if (segment.cachedGeometry) {
+                        latlngs = segment.cachedGeometry;
+                        // Identify color again just in case (though logical consistency suggests it should match)
+                        const lineColorHint = (segment.line_color || '').toLowerCase();
+                        if (lineColorHint.includes('purple')) color = '#9333EA';
+                        if (lineColorHint.includes('green')) color = '#16A34A';
+                    } else {
+                        // ... (Existing Metro slicing logic) ...
+                        const lineColorHint = (segment.line_color || '').toLowerCase();
+                        const targetLine = metroLinesData.find(line => line.color.toLowerCase() === lineColorHint);
+
+                        if (targetLine) {
+                            const findClosestIndex = (target, path) => {
+                                let minD = Infinity;
+                                let idx = -1;
+                                path.forEach((pt, i) => {
+                                    const d = (pt[0] - target[0]) ** 2 + (pt[1] - target[1]) ** 2;
+                                    if (d < minD) { minD = d; idx = i; }
+                                });
+                                return idx;
+                            };
+
+                            const i1 = findClosestIndex(segment.from, targetLine.path);
+                            const i2 = findClosestIndex(segment.to, targetLine.path);
+
+                            if (i1 !== -1 && i2 !== -1) {
+                                const startIdx = Math.min(i1, i2);
+                                const endIdx = Math.max(i1, i2);
+                                latlngs = targetLine.path.slice(startIdx, endIdx + 1);
+
+                                segment.cachedGeometry = latlngs; // Cache it!
+
+                                if (targetLine.color === 'purple') color = '#9333EA';
+                                if (targetLine.color === 'green') color = '#16A34A';
+                            }
+                        }
+                    }
+                }
+
+                newLayerGroup.addLayer(L.polyline(latlngs, { color, weight: 6, opacity: 0.9, dashArray, lineCap: 'round' }));
+                newLayerGroup.addLayer(L.circleMarker(segment.to, { radius: 5, color, fillColor: '#fff', fillOpacity: 1 }));
             }
         }
 
-        currentRouteLayer = L.featureGroup(layers).addTo(map);
+        // Final cleanup before adding new group (in case user clicked again fast)
+        if (currentRouteLayer) {
+            map.removeLayer(currentRouteLayer);
+        }
+
+        currentRouteLayer = newLayerGroup;
+        currentRouteLayer.addTo(map);
         map.fitBounds(currentRouteLayer.getBounds().pad(0.2));
     }
 });

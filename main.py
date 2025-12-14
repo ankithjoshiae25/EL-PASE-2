@@ -17,6 +17,10 @@ templates = Jinja2Templates(directory="templates")
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+@app.get("/preference", response_class=HTMLResponse)
+async def preference_page(request: Request):
+    return templates.TemplateResponse("preference.html", {"request": request})
+
 from app.api import routes
 app.include_router(routes.router, prefix="/api")
 

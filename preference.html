@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Preferences - Last Mile</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        body {
+            overflow-y: auto;
+            /* Allow scrolling on this page */
+        }
+
+        .pref-container {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 24px;
+        }
+
+        .header-section {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .header-section h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .option-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .option-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .option-card:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .option-card.selected {
+            border-color: var(--accent-color);
+            background: rgba(0, 229, 255, 0.1);
+        }
+
+        .option-icon {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        input[type=range] {
+            flex: 1;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .actions {
+            margin-top: 40px;
+            display: flex;
+            gap: 16px;
+        }
+
+        .btn-large {
+            flex: 1;
+            padding: 14px;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .secondary-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+
+        /* Loader Overlay */
+        .loader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .loader-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--primary-color);
+            border-top-color: var(--accent-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .log-text {
+            color: var(--text-secondary);
+            font-family: monospace;
+            height: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="pref-container glass-panel">
+            <div class="header-section">
+                <h1>AI Preferences</h1>
+                <p style="color: var(--text-secondary)">Train the routing model to match your style</p>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Prioritize</label>
+                <div class="option-grid" id="priority-options">
+                    <div class="option-card selected" data-value="balanced">
+                        <span class="option-icon">⚖️</span>
+                        Balanced
+                    </div>
+                    <div class="option-card" data-value="speed">
+                        <span class="option-icon">⚡</span>
+                        Speed
+                    </div>
+                    <div class="option-card" data-value="cost">
+                        <span class="option-icon">💰</span>
+                        Cost
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Preferred Mode</label>
+                <div class="option-grid" id="mode-options">
+                    <div class="option-card selected" data-value="any">
+                        <span class="option-icon">🔄</span>
+                        Any
+                    </div>
+                    <div class="option-card" data-value="metro">
+                        <span class="option-icon">🚇</span>
+                        Metro
+                    </div>
+                    <div class="option-card" data-value="bus">
+                        <span class="option-icon">🚌</span>
+                        Bus
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Max Walking Distance: <span id="walk-val"
+                        style="color:var(--accent-color)">1.0</span> km</label>
+                <div class="slider-container">
+                    <span style="font-size:0.8rem">0.2</span>
+                    <input type="range" id="walk-slider" min="0.2" max="3.0" step="0.1" value="1.0">
+                    <span style="font-size:0.8rem">3.0</span>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button class="secondary-btn btn-large" onclick="window.location.href='/'">Cancel</button>
+                <button class="primary-btn btn-large" onclick="saveAndTrain()">
+                    <span>Train Model & Save</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loader -->
+    <div class="loader-overlay" id="loader">
+        <div class="spinner"></div>
+        <div style="font-size: 1.2rem; margin-bottom: 8px;">Training Personal Model...</div>
+        <div class="log-text" id="log-text">Initializing parameters...</div>
+    </div>
+
+    <script>
+        // Load existing prefs
+        document.addEventListener('DOMContentLoaded', () => {
+            const prefs = JSON.parse(localStorage.getItem('userPreferences') || '{}');
+
+            if (prefs.priority) selectOption('priority-options', prefs.priority);
+            if (prefs.mode) selectOption('mode-options', prefs.mode);
+            if (prefs.maxWalk) {
+                document.getElementById('walk-slider').value = prefs.maxWalk;
+                document.getElementById('walk-val').textContent = prefs.maxWalk;
+            }
+        });
+
+        // Interactive Options
+        document.querySelectorAll('.option-card').forEach(card => {
+            card.addEventListener('click', function () {
+                const parent = this.parentElement;
+                parent.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+
+        document.getElementById('walk-slider').addEventListener('input', function () {
+            document.getElementById('walk-val').textContent = this.value;
+        });
+
+        function selectOption(parentId, value) {
+            const parent = document.getElementById(parentId);
+            const target = parent.querySelector(`[data-value="${value}"]`);
+            if (target) {
+                parent.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+                target.classList.add('selected');
+            }
+        }
+
+        async function saveAndTrain() {
+            const priority = document.querySelector('#priority-options .selected').dataset.value;
+            const mode = document.querySelector('#mode-options .selected').dataset.value;
+            const maxWalk = document.getElementById('walk-slider').value;
+
+            const prefs = { priority, mode, maxWalk };
+
+            // Show Loader
+            const loader = document.getElementById('loader');
+            const log = document.getElementById('log-text');
+            loader.classList.add('active');
+
+            // Mock Training Steps
+            const steps = [
+                "Analyzing historical routes...",
+                "Optimizing for " + priority + "...",
+                "Adjusting mode weights...",
+                "Finalizing model..."
+            ];
+
+            for (let step of steps) {
+                log.textContent = step;
+                await new Promise(r => setTimeout(r, 600)); // Fake delay
+            }
+
+            // Save to LocalStorage
+            localStorage.setItem('userPreferences', JSON.stringify(prefs));
+
+            // Notify Backend (Optional, but good for "training")
+            try {
+                await fetch('/api/train', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(prefs)
+                });
+            } catch (e) { console.log("Backend sync failed", e); }
+
+            log.textContent = "Done!";
+            await new Promise(r => setTimeout(r, 500));
+
+            window.location.href = '/';
+        }
+    </script>
+</body>
+
+</html>

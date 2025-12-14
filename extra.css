@@ -124,3 +124,47 @@
 .results-panel:not(.hidden) {
     transform: translateX(0) !important;
 }
+
+/* Ensure relative positioning for badge */
+.route-card {
+    position: relative !important;
+}
+
+/* Selected Route Highlight */
+.route-card.selected {
+    border: 2px solid var(--accent-color) !important;
+    background: rgba(108, 99, 255, 0.15) !important;
+    box-shadow: 0 0 15px rgba(108, 99, 255, 0.3) !important;
+    transform: scale(1.02);
+}
+
+/* Selected Badge */
+.route-card.selected::after {
+    content: "✅ Selected";
+    position: absolute;
+    top: -12px;
+    right: 12px;
+    background: #10B981;
+    /* Green-500 */
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    z-index: 10;
+    animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
